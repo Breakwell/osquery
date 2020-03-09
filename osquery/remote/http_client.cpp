@@ -85,21 +85,6 @@ void Client::connectHandler(boost::system::error_code const& ec,
   cancelTimerAndSetError(ec);
 }
 
-void Client::resolveHandler(
-    boost::system::error_code const& ec,
-    boost::asio::ip::tcp::resolver::results_type results) {
-  if (!ec) {
-    boost::asio::async_connect(sock_,
-                               results,
-                               std::bind(&Client::connectHandler,
-                                         this,
-                                         std::placeholders::_1,
-                                         std::placeholders::_2));
-  } else {
-    cancelTimerAndSetError(ec);
-  }
-}
-
 void Client::handshakeHandler(boost::system::error_code const& ec) {
   cancelTimerAndSetError(ec);
 }
@@ -130,22 +115,18 @@ void Client::createConnection() {
     connect_host = connect_host.substr(0, pos);
   }
 
-  callNetworkOperation([&]() {
-    r_.async_resolve(connect_host,
-                     port,
-                     std::bind(&Client::resolveHandler,
-                               this,
-                               std::placeholders::_1,
-                               std::placeholders::_2));
-  });
+  boost::system::error_code rc;
+  connect(sock_,
+          r_.resolve(boost::asio::ip::tcp::resolver::query{connect_host, port}),
+          rc);
 
-  if (ec_) {
+  if (rc) {
     std::string error("Failed to connect to ");
     if (client_options_.proxy_hostname_) {
       error += "proxy host ";
     }
-    error += connect_host + ':' + port;
-    throw std::system_error(ec_, error);
+    error += connect_host + ":" + port;
+    throw std::system_error(rc, error);
   }
 
   if (client_options_.keep_alive_) {
